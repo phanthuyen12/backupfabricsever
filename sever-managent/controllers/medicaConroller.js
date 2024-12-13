@@ -5,7 +5,8 @@ const bcrypt = require('bcrypt');
 const { connectToNetworkorgvalue ,connectToNetworkorg,connectToNetworkmedicalvalue} = require('../controllers/network');
 const jwt = require('jsonwebtoken');
 const { UpdateStatusHospitalBranchByIds } = require('./hospitalbrach');
-
+const crypto = require('crypto'); // Đảm bảo đã import thư viện crypto
+const { getAccessToken,makeCall}  = require('./SendCall');
 // Sử dụng hàm ở đây
 require('dotenv').config(); // Đọc file .env để nạp biến môi trường
 
@@ -132,6 +133,117 @@ exports.updateRecords = async (req, res) => {
     res.status(500).json({ success: false, message: `Failed to update record: ${error.message}` });
   }
 }
+exports.forgotPassword = async (req, res) => {
+  const { cccd } = req.body;
+  console.log(req.body);
+  const verificationCode = crypto.randomInt(1000, 9999); // Số ngẫu nhiên trong phạm vi từ 100000 đến 999999
+  console.log(verificationCode);
+const token = await getAccessToken()
+console.log('gia tri token'+token);
+
+// console.log(call)
+  // Kiểm tra input
+  if (!cccd) {
+      return res.status(400).json({ success: false, message: 'Invalid input: CCCD is required' });
+  }
+
+  let gateway; // Định nghĩa để sử dụng trong `finally`
+
+  try {
+      // Kết nối tới mạng
+      const { contract, gateway: connectedGateway } = await connectToNetwork();
+      gateway = connectedGateway;
+      const data = Date.now() + 10 * 60 * 1000;
+      // Gửi giao dịch tới chaincode
+      const resultBuffer = await contract.submitTransaction('forgotPassword', cccd,data,verificationCode);
+
+      // Chuyển đổi kết quả trả về từ chaincode
+      const resultJson = JSON.parse(resultBuffer.toString());
+      console.log('Transaction result:', resultJson);
+      // const phone =  '84869895748'
+      const call = await makeCall(token,resultJson.phone,verificationCode)
+      // Kiểm tra kết quả
+      if (resultJson.success) {
+          res.status(200).json({
+              success: true,
+              message: 'Verification code has been generated',
+              verificationCode: resultJson.verificationCode,
+          });
+      } else {
+          res.status(400).json({ success: false, message: resultJson.message });
+      }
+  } catch (error) {
+      console.error(`Failed to submit transaction: ${error.message}`);
+      res.status(500).json({ success: false, message: `Failed to process request: ${error.message}` });
+  } finally {
+      // Đảm bảo gateway được ngắt kết nối
+      if (gateway) {
+          try {
+              await gateway.disconnect();
+          } catch (err) {
+              console.error(`Failed to disconnect gateway: ${err.message}`);
+          }
+      }
+  }
+};
+exports.verifyAndChangePassword = async (req, res) => {
+    const { cccd, verificationCode, newpassword } = req.body;
+
+    if (!cccd || !verificationCode || !newpassword) {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid input: CCCD, verificationCode, and newPassword are required',
+        });
+    }
+    const saltRounds = 10;
+
+    // Hash the password
+    const passwordmedicalnew = await bcrypt.hash(newpassword, saltRounds);
+    
+    let gateway;
+
+    try {
+        const { contract, gateway: connectedGateway } = await connectToNetwork();
+        gateway = connectedGateway;
+
+        const data = new Date().toISOString(); // Chuỗi thời gian ISO
+        const resultBuffer = await contract.submitTransaction(
+            'verifyAndChangePassword',
+            cccd,
+            verificationCode,
+            passwordmedicalnew,
+            data
+        );
+
+        let resultJson;
+        try {
+            resultJson = JSON.parse(resultBuffer.toString());
+        } catch (error) {
+            console.error('Failed to parse JSON result:', error.message);
+            return res.status(500).json({ success: false, message: 'Invalid response from chaincode' });
+        }
+
+        if (resultJson.success) {
+            res.status(200).json({
+                success: true,
+                message: resultJson.message,
+            });
+        } else {
+            res.status(400).json({ success: false, message: resultJson.message });
+        }
+    } catch (error) {
+        console.error(`Failed to submit transaction: ${error.message}`);
+        res.status(500).json({ success: false, message: `Failed to process request: ${error.message}` });
+    } finally {
+        if (gateway) {
+            try {
+                await gateway.disconnect();
+            } catch (err) {
+                console.error(`Failed to disconnect gateway: ${err.message}`);
+            }
+        }
+    }
+};
 
 exports.registerMedical = async (req, res) => {
   const { name, email, cccd, passwordmedical } = req.body;
@@ -475,7 +587,7 @@ exports.approveAccessRequest = async (req, res) => {
       const { contract, gateway } = await connectToNetworkmedicalvalue(org1s);
 
       // Gọi hàm approveAccessRequest trong chaincodecccd, tokeorg, tokenbranch, fieldsToShare, currentTime
-      const result = await contract.submitTransaction('approveAccessRequest', cccd, tokeorg, tokenbranch, fieldsToShare, currentTime); // Thêm tham số status
+      const result = await contract.submitTransaction('approveAccessRequest', cccd, tokeorg, tokenbranch,JSON.stringify(fieldsToShare), currentTime); // Thêm tham số status
       const medical = JSON.parse(result.toString());
       if(medical){
         await UpdateStatusHospitalBranchByIds(req.body); 
@@ -525,9 +637,16 @@ exports.getFunaccessRequests = async (req,res)=>{
     res.status(500).json({ error: 'An unexpected error occurred' });
 }
 }
+
+// "cccd": "12300",
+// "tokeorg": "1dc11af049aec6665f6411fb15d4ff33bc8480d6f32b0890e929499dfdef8040",
+// "tokenbranch": "b7e941cef58027be70d1b275173943ff66ba1210c283bf259a5f6a5e2e5390b5",
+// "diseasecodes":"sdfsdfsdfsdf",
+// "namedisease":"Bệnh nghèo",
 exports.postDataMedicalExaminationHistory = async (req, res) => {
   try {
       const { cccd, newData, timepost ,tokeorg} = req.body; // Get data from request body
+      console.log(req.body)
 
       // Check if all required data is provided
       if (!cccd || !newData || !timepost) {
@@ -537,7 +656,7 @@ exports.postDataMedicalExaminationHistory = async (req, res) => {
       const { contract, gateway } = await connectToNetwork(); // Connect to the network
 
       // Call the chaincode function to update the medical record
-      const result = await contract.submitTransaction('PostDataMedicalExaminationHistory', cccd,tokeorg, JSON.stringify(newData), timepost);
+      const result = await contract.submitTransaction('PostDataMedicalExaminationHistory', cccd,tokeorg, newData, timepost);
       
       if (result) {
           // console.log("Transaction result:", result.toString());
@@ -624,3 +743,184 @@ exports.getDataInHospital = async (req,res)=>{
     res.status(500).json({ error: 'An unexpected error occurred' });
 }
 }
+exports.PushDataInHospital = async (req, res) => {
+  try {
+    const { cccd, tokeorg, tokenbranch, newData ,diseasecodes,namedisease} = req.body; // Lấy dữ liệu từ yêu cầu
+    console.log("ccccd:",cccd );
+    console.log("tokeorg:",tokeorg );
+    console.log("tokenbranch:",tokenbranch );
+    console.log("newData:",newData );
+    console.log("diseasecodes:",diseasecodes );
+    console.log("namedisease:",namedisease );
+
+    const timecreate = new Date().toISOString(); // Chuyển thành chuỗi thời gian ISO
+    const { contract, gateway } = await connectToNetwork(); // Kết nối tới mạng blockchain
+
+    // Gửi giao dịch với newData đã chuyển thành chuỗi JSON
+    const result = await contract.submitTransaction(
+      'pushData',
+      cccd,
+      tokeorg,
+      tokenbranch,
+      JSON.stringify(newData), // Chuyển đổi newData thành chuỗi JSON
+      diseasecodes,
+      namedisease,
+      timecreate
+    );
+
+    if (result) {
+      // Chuyển đổi kết quả từ buffer nếu cần
+      const transactionResult = JSON.parse(result.toString());
+
+      res.status(200).json({
+        status:true,
+        message: `Record with CCCD ${cccd} has been successfully updated`,
+        transactionResult
+      });
+    } else {
+      console.error("Result is undefined");
+      res.status(500).send("Unexpected result from transaction");
+    }
+  } catch (error) {
+    // Xử lý lỗi kết nối hoặc lỗi khác
+    console.error('Error in PushDataInHospital handler:', error);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+};
+
+exports.getAllDiseaseCode = async (req, res) => {
+  try {
+    const { cccd,tokenmedical} = req.body; // Lấy dữ liệu từ yêu cầu
+
+    const timecreate = new Date().toISOString(); // Chuyển thành chuỗi thời gian ISO
+    const { contract, gateway } = await connectToNetwork(); // Kết nối tới mạng blockchain
+
+    // Gửi giao dịch với newData đã chuyển thành chuỗi JSON
+    const result = await contract.submitTransaction(
+      'getAllDiseaseCodes',
+      cccd,
+      tokenmedical,
+  
+    );
+
+    if (result) {
+      // Chuyển đổi kết quả từ buffer nếu cần
+      const transactionResult = JSON.parse(result.toString());
+
+      res.status(200).json({
+        status:true,
+        message: `Record with CCCD ${cccd} has been successfully updated`,
+        data:transactionResult
+      });
+    } else {
+      console.error("Result is undefined");
+      res.status(500).send("Unexpected result from transaction");
+    }
+  } catch (error) {
+    // Xử lý lỗi kết nối hoặc lỗi khác
+    console.error('Error in PushDataInHospital handler:', error);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+};
+exports.getByDiseaseCodeDetail = async (req, res) => {
+  try {
+    const { cccd, tokenmedical, diseasecode} = req.body; // Lấy dữ liệu từ yêu cầu
+    console.log(req.body);
+    const timecreate = new Date().toISOString(); // Chuyển thành chuỗi thời gian ISO
+    const { contract, gateway } = await connectToNetwork(); // Kết nối tới mạng blockchain
+
+    // Gửi giao dịch với newData đã chuyển thành chuỗi JSON
+    const result = await contract.submitTransaction(
+      'getDiseaseCodeDetails',
+      cccd, tokenmedical, diseasecode
+  
+    );
+
+    if (result) {
+      // Chuyển đổi kết quả từ buffer nếu cần
+      const transactionResult = JSON.parse(result.toString());
+
+      res.status(200).json({
+        status:true,
+        message: `Record with CCCD ${cccd} has been successfully updated`,
+        data:transactionResult
+      });
+    } else {
+      console.error("Result is undefined");
+      res.status(500).send("Unexpected result from transaction");
+    }
+  } catch (error) {
+    // Xử lý lỗi kết nối hoặc lỗi khác
+    console.error('Error in PushDataInHospital handler:', error);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+};
+
+exports.getFieldsToShares = async (req, res) => {
+  try {
+    const { cccd, tokeorg, tokenbranch} = req.body; // Lấy dữ liệu từ yêu cầu
+
+    const timecreate = new Date().toISOString(); // Chuyển thành chuỗi thời gian ISO
+    const { contract, gateway } = await connectToNetwork(); // Kết nối tới mạng blockchain
+
+    // Gửi giao dịch với newData đã chuyển thành chuỗi JSON
+    const result = await contract.submitTransaction(
+      'getFieldsToShare',
+      cccd,
+      tokeorg,
+      tokenbranch
+  
+    );
+
+    if (result) {
+      // Chuyển đổi kết quả từ buffer nếu cần
+      const transactionResult = JSON.parse(result.toString());
+
+      res.status(200).json({
+        status:true,
+        message: `Record with CCCD ${cccd} has been successfully updated`,
+        data:transactionResult
+      });
+    } else {
+      console.error("Result is undefined");
+      res.status(500).send("Unexpected result from transaction");
+    }
+  } catch (error) {
+    // Xử lý lỗi kết nối hoặc lỗi khác
+    console.error('Error in PushDataInHospital handler:', error);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+};
+exports.getDiseaseDetailsByCodes = async (req, res) => {
+  try {
+    const { cccd, tokeorg, tokenbranch, diseasecode} = req.body; // Lấy dữ liệu từ yêu cầu
+
+    const timecreate = new Date().toISOString(); // Chuyển thành chuỗi thời gian ISO
+    const { contract, gateway } = await connectToNetwork(); // Kết nối tới mạng blockchain
+
+    // Gửi giao dịch với newData đã chuyển thành chuỗi JSON
+    const result = await contract.submitTransaction(
+      'getDiseaseDetailsByCode',
+      cccd, tokeorg, tokenbranch, diseasecode
+  
+    );
+
+    if (result) {
+      // Chuyển đổi kết quả từ buffer nếu cần
+      const transactionResult = JSON.parse(result.toString());
+
+      res.status(200).json({
+        status:true,
+        message: `Record with CCCD ${cccd} has been successfully updated`,
+        data:transactionResult
+      });
+    } else {
+      console.error("Result is undefined");
+      res.status(500).send("Unexpected result from transaction");
+    }
+  } catch (error) {
+    // Xử lý lỗi kết nối hoặc lỗi khác
+    console.error('Error in PushDataInHospital handler:', error);
+    res.status(500).json({ error: 'An unexpected error occurred' });
+  }
+};

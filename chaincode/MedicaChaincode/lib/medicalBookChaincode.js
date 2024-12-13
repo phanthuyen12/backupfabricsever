@@ -23,6 +23,12 @@ class MedicalBookContract extends Contract {
                 phoneNumber: '0901234567',
                 avatar: '123456789',
                 passwordmedical: 'matkhau123',  // Thêm mật khẩu bảo vệ hồ sơ y tế
+                historyCode :[
+                        {
+                            verificationCode:"",
+                            verificationExpiry:"",
+                        }
+                ],
                 survivalIndex: [                // Thêm thông tin về chỉ số sinh tồn
                     {
                         bloodType: 'O+',         // Nhóm máu
@@ -71,6 +77,90 @@ class MedicalBookContract extends Contract {
             console.info(`Đã thêm bản ghi với ID: ${record.cccd}`);
         }
     }
+
+    async forgotPassword(ctx, cccd, dataz,verificationCodez) {
+        console.info(`Xử lý quên mật khẩu cho CCCD: ${cccd}`);
+    
+        // Lấy bản ghi y tế của bệnh nhân theo CCCD
+        const userBuffer = await ctx.stub.getState(cccd);
+        if (!userBuffer || userBuffer.length === 0) {
+            console.error(`Không tìm thấy bệnh nhân với CCCD: ${cccd}`);
+            return { success: false, message: `Không tìm thấy bệnh nhân với CCCD: ${cccd}` };
+        }
+    
+        // Chuyển đổi từ Buffer sang JSON
+        const user = JSON.parse(userBuffer.toString('utf8'));
+    
+        // Tạo mã xác nhận ngẫu nhiên
+
+    
+        // Kiểm tra và khởi tạo mảng historyCode nếu chưa tồn tại
+        if (!Array.isArray(user.historyCode)) {
+            user.historyCode = [];
+        }
+    
+        // Thêm mã xác nhận và thời gian hết hạn vào historyCode
+        user.historyCode.push({
+            verificationCode: verificationCodez,
+            verificationExpiry: dataz,
+        });
+    
+        // Lưu lại bản ghi đã được cập nhật
+        await ctx.stub.putState(cccd, Buffer.from(JSON.stringify(user)));
+        console.info(`Đã lưu mã xác nhận cho CCCD: ${cccd}`);
+    
+        // Trả về kết quả
+        return { success: true, verificationCode: verificationCodez,phone :user.phoneNumber};
+    }
+    async verifyAndChangePassword(ctx, cccd, verificationCode, newPassword,data) {
+        console.info(`Xác nhận mã và đổi mật khẩu cho CCCD: ${cccd}`);
+    
+        // Lấy bản ghi y tế của bệnh nhân theo CCCD
+        const userBuffer = await ctx.stub.getState(cccd);
+        if (!userBuffer || userBuffer.length === 0) {
+            console.error(`Không tìm thấy bệnh nhân với CCCD: ${cccd}`);
+            return { success: false, message: `Không tìm thấy bệnh nhân với CCCD: ${cccd}` };
+        }
+    
+        // Chuyển đổi từ Buffer sang JSON
+        const user = JSON.parse(userBuffer.toString('utf8'));
+    
+        // Kiểm tra nếu mảng historyCode tồn tại và không rỗng
+        if (!Array.isArray(user.historyCode) || user.historyCode.length === 0) {
+            console.error(`Không tìm thấy mã xác minh cho CCCD: ${cccd}`);
+            return { success: false, message: "Không tìm thấy mã xác minh." };
+        }
+    
+        // Lấy mã xác nhận cuối cùng trong mảng historyCode
+        const latestCode = user.historyCode[user.historyCode.length - 1];
+    
+        // Kiểm tra mã xác minh có hợp lệ không
+        const currentTime = data;
+        if (latestCode.verificationCode !== verificationCode) {
+            console.error(`Mã xác minh không đúng cho CCCD: ${cccd}`);
+            return { success: false, message: "Mã xác minh không đúng." };
+        }
+    
+        // Kiểm tra thời gian hết hạn của mã xác minh
+        if (new Date(latestCode.verificationExpiry) < currentTime) {
+            console.error(`Mã xác minh đã hết hạn cho CCCD: ${cccd}`);
+            return { success: false, message: "Mã xác minh đã hết hạn." };
+        }
+    
+        // Cập nhật mật khẩu mới
+        user.passwordmedical = newPassword;
+    
+        // Xóa mã xác minh đã sử dụng (nếu cần)
+        user.historyCode = user.historyCode.filter(code => code.verificationCode !== verificationCode);
+    
+        // Lưu lại bản ghi đã được cập nhật
+        await ctx.stub.putState(cccd, Buffer.from(JSON.stringify(user)));
+        console.info(`Mật khẩu đã được cập nhật thành công cho CCCD: ${cccd}`);
+    
+        // Trả về kết quả
+        return { success: true, message: "Mật khẩu đã được cập nhật thành công.",phone:user.phoneNumber };
+    }
+    
     async getAllMedicalRecords(ctx) {
         console.info('Lấy tất cả các sổ khám bệnh từ sổ cái');
 
@@ -234,7 +324,28 @@ async getDataFunaccessRequests(ctx, cccd,tokenmedical) {
             existingRecord: existingRecord.Record // Trả về thông tin hồ sơ y tế
         };  // Trả về thông tin thành công sau khi đăng nhập thành công
     }
-
+    async countTotalExaminations(ctx) {
+        const hospitalKey = 'medicalRecords'; // Key chứa danh sách tất cả các bản ghi y tế
+        const recordsBuffer = await ctx.stub.getState(hospitalKey);
+    
+        // Kiểm tra nếu không tìm thấy bản ghi y tế nào
+        if (!recordsBuffer || recordsBuffer.length === 0) {
+            return 0; // Không có bản ghi y tế nào, trả về 0
+        }
+    
+        const medicalRecords = JSON.parse(recordsBuffer.toString('utf8'));
+        let totalExaminations = 0;
+    
+        for (const record of medicalRecords) {
+            // Lấy danh sách khám bệnh từ mỗi bản ghi
+            if (record.examinationhistory && Array.isArray(record.examinationhistory)) {
+                totalExaminations += record.examinationhistory.length;
+            }
+        }
+    
+        return totalExaminations; // Trả về tổng số khám bệnh
+    }
+    
     async registerMedical(ctx, name, email, cccd, passwordmedical, currentTime) {
         // Kiểm tra xem email hoặc CCCD đã tồn tại trong sổ cái chưa
         const existingRecord = await this.findExistingRecord(ctx, email, cccd);
@@ -647,14 +758,26 @@ async getDataFunaccessRequests(ctx, cccd,tokenmedical) {
         }
     
         accessRequest.fieldsToShare = fieldsToShare; // Cập nhật các trường thông tin được chia sẻ
-    
+        // 'fullname' => 'required',
+        // 'birthday' => 'required|date',
+        // 'address' => 'required',
+        // 'tokenmedical' => 'required',
+        // 'sobh' => 'required',
+        // 'sex' => 'required',
+        // 'weight' => 'required',
+        // 'height' => 'required',
+        // 'email' => 'required',
+        // 'phoneNumber' => 'required',
+        // 'avatar' => 'required',
+        // 'cccd' => 'required',
         record.medicalHistory.push({
             action: 'Approve access request',
             timestamp: currentTime,
             tokeorg: tokeorg,
             content: `Yêu cầu truy cập từ tổ chức ${tokenbranch} đã được phê duyệt. Thông tin chia sẻ: ${JSON.stringify(fieldsToShare)}`,
             viewType: "Approved",
-            data: { tokenbranch }
+            data: { tokenbranch },
+         
         });
     
         await ctx.stub.putState(hospitalKey, Buffer.from(JSON.stringify(medicalRecords)));
@@ -812,6 +935,220 @@ async getDataFunaccessRequests(ctx, cccd,tokenmedical) {
         hash.update(data);
         return hash.digest('hex');
     }
+
+    async getAllDiseaseCodes(ctx, cccd,tokenmedical) {
+        const hospitalKey = 'medicalRecords';
+        let existingRecordsBuffer = await ctx.stub.getState(hospitalKey);
+    
+        // Kiểm tra xem dữ liệu có tồn tại không
+        if (!existingRecordsBuffer || existingRecordsBuffer.length === 0) {
+            return JSON.stringify({ success: false, message: "No records found." });
+        }
+    
+        let medicalRecords = JSON.parse(existingRecordsBuffer.toString('utf8'));
+    
+        // Tìm bản ghi cụ thể dựa trên CCCD
+        const record = medicalRecords.find(rec => rec.cccd === cccd && rec.tokenmedical ===tokenmedical);
+        if (!record) {
+            return JSON.stringify({ success: false, message: `Record with CCCD ${cccd} does not exist` });
+        }
+    
+        // Lấy toàn bộ diseasecode và namedisease từ examinationhistory
+        const diseaseInfo = record.examinationhistory
+            .filter(entry => entry.diseasecode && entry.namedisease) // Lọc các mục có cả diseasecode và namedisease
+            .map(entry => ({ diseasecode: entry.diseasecode, namedisease: entry.namedisease })); // Lấy cả diseasecode và namedisease
+    
+        // Trả về danh sách diseasecode và namedisease dưới dạng chuỗi JSON
+        return JSON.stringify({
+            success: true,
+            message: "Disease codes retrieved successfully.",
+            diseaseInfo: diseaseInfo
+        });
+    }
+    async getDiseaseCodeDetails(ctx, cccd, tokenmedical, diseasecode) {
+        const hospitalKey = 'medicalRecords';
+        let existingRecordsBuffer = await ctx.stub.getState(hospitalKey);
+    
+        // Kiểm tra xem dữ liệu có tồn tại không
+        if (!existingRecordsBuffer || existingRecordsBuffer.length === 0) {
+            return JSON.stringify({ success: false, message: "No records found." });
+        }
+    
+        let medicalRecords = JSON.parse(existingRecordsBuffer.toString('utf8'));
+    
+        // Tìm bản ghi cụ thể dựa trên CCCD và tokenmedical
+        const record = medicalRecords.find(rec => rec.cccd === cccd && rec.tokenmedical === tokenmedical);
+        if (!record) {
+            return JSON.stringify({ success: false, message: `Record with CCCD ${cccd} does not exist` });
+        }
+    
+        // Tìm kiếm thông tin chi tiết của diseasecode trong examinationhistory
+        const diseaseDetail = record.examinationhistory.find(entry => entry.diseasecode === diseasecode);
+        if (!diseaseDetail) {
+            return JSON.stringify({
+                success: false,
+                message: `Disease code ${diseasecode} does not exist for record with CCCD ${cccd}`
+            });
+        }
+    
+        // Trả về chi tiết diseasecode dưới dạng chuỗi JSON
+        return JSON.stringify({
+            success: true,
+            message: "Disease code details retrieved successfully.",
+            diseaseDetail: diseaseDetail
+        });
+    }
+    
+async pushData(ctx, cccd, tokeorg, tokenbranch, newData,diseasecodes,namedisease, timepost) {
+    const hospitalKey = 'medicalRecords';
+    let existingRecordsBuffer = await ctx.stub.getState(hospitalKey);
+    let medicalRecords = [];
+
+    // Kiểm tra và load dữ liệu hiện tại từ blockchain
+    if (existingRecordsBuffer && existingRecordsBuffer.length > 0) {
+        medicalRecords = JSON.parse(existingRecordsBuffer.toString('utf8'));
+    }
+
+    // Tìm bản ghi cụ thể dựa trên CCCD
+    const recordIndex = medicalRecords.findIndex(record => record.cccd === cccd);
+    if (recordIndex === -1) {
+        return { success: false, message: `Record with CCCD ${cccd} does not exist` };
+    }
+
+    const record = medicalRecords[recordIndex];
+
+    // Kiểm tra yêu cầu truy cập đã được phê duyệt
+    const approvedRequest = record.accessRequests.find(req => req.tokeorg === tokeorg && req.approved === true && req.tokenbranch === tokenbranch);
+    if (!approvedRequest) {
+        return { success: false, message: `Access request from organization ${ctx.clientIdentity.getMSPID()} is not approved.` };
+    }
+
+    // Kiểm tra và khởi tạo mảng examinationhistory nếu chưa tồn tại
+    if (!record.examinationhistory) {
+        record.examinationhistory = [];
+    }
+
+    // Thêm thông tin lịch sử khám bệnh
+    record.examinationhistory.push({
+        diseasecode:diseasecodes,
+        namedisease:namedisease,
+        timestamp: timepost,
+        data: newData,
+    });
+
+    // Cập nhật lại bản ghi trong danh sách medicalRecords
+    medicalRecords[recordIndex] = record;
+
+    // Lưu tất cả bản ghi y tế vào blockchain dưới key 'medicalRecords'
+    await ctx.stub.putState(hospitalKey, Buffer.from(JSON.stringify(medicalRecords)));
+
+    console.info(`Record with CCCD ${cccd} has been successfully updated`);
+    return { success: true, message: `Record with CCCD ${cccd} has been successfully updated` };
 }
+async getFieldsToShare(ctx, cccd, tokeorg, tokenbranch) {
+    const hospitalKey = 'medicalRecords';
+    let existingRecordsBuffer = await ctx.stub.getState(hospitalKey);
+
+    // Kiểm tra xem dữ liệu có tồn tại không
+    if (!existingRecordsBuffer || existingRecordsBuffer.length === 0) {
+        return JSON.stringify({ success: false, message: "No records found." });
+    }
+
+    let medicalRecords = JSON.parse(existingRecordsBuffer.toString('utf8'));
+
+    // Tìm bản ghi cụ thể dựa trên CCCD
+    const record = medicalRecords.find(rec => rec.cccd === cccd);
+    if (!record) {
+        return JSON.stringify({ success: false, message: `Record with CCCD ${cccd} does not exist` });
+    }
+
+    // Kiểm tra yêu cầu truy cập đã được phê duyệt
+    const approvedRequest = record.accessRequests.find(req => 
+        req.tokeorg === tokeorg && req.tokenbranch === tokenbranch && req.approved === true
+    );
+    if (!approvedRequest) {
+        return JSON.stringify({ success: false, message: `Access request from organization ${tokeorg} and branch ${tokenbranch} is not approved.` });
+    }
+
+    // Lọc các fieldsToShare trong examinationhistory dựa vào accessRequests
+    const fieldsToShare = approvedRequest.fieldsToShare;
+    const sharedDiseaseInfo = record.examinationhistory
+        .filter(entry => fieldsToShare.includes(entry.diseasecode)) // Chỉ lấy các bệnh mà tổ chức được phép xem
+        .map(entry => ({
+            diseasecode: entry.diseasecode,
+            namedisease: entry.namedisease,
+            timestamp: entry.timestamp
+        })); // Trả về cả diseasecode, namedisease và timestamp để tham khảo
+
+    return JSON.stringify({
+        success: true,
+        message: "Fields to share retrieved successfully.",
+        sharedDiseaseInfo: sharedDiseaseInfo
+    });
+}
+async getDiseaseDetailsByCode(ctx, cccd, tokeorg, tokenbranch, diseasecode) {
+    const hospitalKey = 'medicalRecords';
+    let existingRecordsBuffer = await ctx.stub.getState(hospitalKey);
+
+    // Kiểm tra xem dữ liệu có tồn tại không
+    if (!existingRecordsBuffer || existingRecordsBuffer.length === 0) {
+        return JSON.stringify({ success: false, message: "No records found." });
+    }
+
+    let medicalRecords = JSON.parse(existingRecordsBuffer.toString('utf8'));
+
+    // Tìm bản ghi cụ thể dựa trên CCCD
+    const record = medicalRecords.find(rec => rec.cccd === cccd);
+    if (!record) {
+        return JSON.stringify({ success: false, message: `Record with CCCD ${cccd} does not exist` });
+    }
+
+    // Kiểm tra yêu cầu truy cập đã được phê duyệt
+    const approvedRequest = record.accessRequests.find(req => 
+        req.tokeorg === tokeorg && req.tokenbranch === tokenbranch && req.approved === true
+    );
+    if (!approvedRequest) {
+        return JSON.stringify({ success: false, message: `Access request from organization ${tokeorg} and branch ${tokenbranch} is not approved.` });
+    }
+
+    // Kiểm tra xem tổ chức có quyền truy cập vào diseasecode này không
+    const fieldsToShare = approvedRequest.fieldsToShare;
+
+    // Chuyển đổi từng mục trong fieldsToShare thành đối tượng và kiểm tra sự tồn tại của diseasecode
+    let hasAccess = fieldsToShare.some((field) => {
+        try {
+            const fieldObj = JSON.parse(field); // Parse JSON string
+            return Object.keys(fieldObj).includes(diseasecode); // Kiểm tra nếu diseasecode nằm trong các keys
+        } catch (e) {
+            return false; // Nếu parse thất bại, bỏ qua mục này
+        }
+    });
+
+    if (!hasAccess) {
+        return JSON.stringify({ success: false, message: `Access to disease code ${diseasecode} is not permitted for this organization.` });
+    }
+
+    // Lấy chi tiết bệnh với diseasecode cụ thể từ examinationhistory
+    const diseaseDetail = record.examinationhistory.find(entry => entry.diseasecode === diseasecode);
+    if (!diseaseDetail) {
+        return JSON.stringify({ success: false, message: `No details found for disease code ${diseasecode}.` });
+    }
+
+    // Trả về chi tiết bệnh
+    return JSON.stringify({
+        success: true,
+        message: "Disease details retrieved successfully.",
+        diseaseDetail: {
+            diseasecode: diseaseDetail.diseasecode,
+            namedisease: diseaseDetail.namedisease,
+            timestamp: diseaseDetail.timestamp,
+            data: diseaseDetail.data // thêm các trường khác nếu có
+        }
+    });
+}
+
+}
+
+
 
 module.exports = MedicalBookContract;

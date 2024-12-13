@@ -13,26 +13,26 @@
 #
 ################################################################################
 Organizations:
-    - &phangiathuyendevfs3dsdfe
+    - &benhvienthanhthuyendxquang
         # DefaultOrg defines the organization which is used in the sampleconfig
         # of the fabric.git development environment
-        Name: phangiathuyendevfs3dsdfeMSP
+        Name: benhvienthanhthuyendxquangMSP
 
         # ID to load the MSP definition as
-        ID: phangiathuyendevfs3dsdfeMSP
+        ID: benhvienthanhthuyendxquangMSP
 
-        MSPDir: ../organizations/peerOrganizations/phangiathuyendevfs3dsdfe.example.com/msp
+        MSPDir: ../organizations/peerOrganizations/benhvienthanhthuyendxquang.example.com/msp
 
         Policies:
             Readers:
                 Type: Signature
-                Rule: "OR('phangiathuyendevfs3dsdfeMSP.admin', 'phangiathuyendevfs3dsdfeMSP.peer', 'phangiathuyendevfs3dsdfeMSP.client')"
+                Rule: "OR('benhvienthanhthuyendxquangMSP.admin', 'benhvienthanhthuyendxquangMSP.peer', 'benhvienthanhthuyendxquangMSP.client')"
             Writers:
                 Type: Signature
-                Rule: "OR('phangiathuyendevfs3dsdfeMSP.admin', 'phangiathuyendevfs3dsdfeMSP.client')"
+                Rule: "OR('benhvienthanhthuyendxquangMSP.admin', 'benhvienthanhthuyendxquangMSP.client')"
             Admins:
                 Type: Signature
-                Rule: "OR('phangiathuyendevfs3dsdfeMSP.admin')"
+                Rule: "OR('benhvienthanhthuyendxquangMSP.admin')"
             Endorsement:
                 Type: Signature
-                Rule: "OR('phangiathuyendevfs3dsdfeMSP.peer')"
+                Rule: "OR('benhvienthanhthuyendxquangMSP.peer')"

@@ -48,10 +48,18 @@ exports.create_brach = async (req, res) => {
         const { contract, gateway } = await connectToNetworkorgvalue(value);
         const timecreate = new Date();
         const result = await contract.submitTransaction('createrdetailbranch', tokeorg, branchname, branchaddress, branchphone, branchemail, branchbusinesslicense, timecreate);
-
+        const data = {
+            tokeorg:tokeorg,
+            branchname:branchname,
+            branchaddress:branchaddress,
+            branchphone:branchphone,
+            branchemail:branchemail,
+            branchbusinesslicense:branchbusinesslicense,
+            tokenbranch:result.toString()
+        }
         if (result) {
             console.log('Transaction result:', result.toString());
-            res.status(200).json({ success: true }); // Trả về true khi thành công
+            res.status(200).json({ success: true,data:data }); // Trả về true khi thành công
         } else {
             console.error('Result is undefined');
             res.status(500).json({ success: false }); // Trả về false nếu không có kết quả

@@ -6,7 +6,117 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { connectToNetworkorgvalue ,connectToNetworkorg,connectToNetwork} = require('../controllers/network');
 
+exports.changeAdminToDoctors = async (req, res) => {
+  let gateway;
+  try {
+    const { tokenorg, oldTokenUser, newTokenUser } = req.body;
+    console.log(req.body);
 
+    const value = "org1";
+    // Kết nối tới network
+    const { contract, gateway: gw } = await connectToNetworkorgvalue(value);
+    gateway = gw;
+
+    // Gửi transaction để thay đổi admin
+    const data = new Date().toISOString();
+    const result = await contract.submitTransaction("changeSuperAdmin", tokenorg, oldTokenUser, newTokenUser, data);
+
+    // Kiểm tra nếu có kết quả trả về
+    if (result) {
+      // Chuyển đổi chuỗi JSON thành object và trả về kết quả dưới dạng JSON
+      const organizations = JSON.parse(result.toString());
+
+      // Thêm status vào kết quả trả về
+      return res.status(200).json({
+        status: true,
+        organizations: organizations
+      });
+    } else {
+      return res.status(404).json({
+        status: false,
+        message: "No organizations found"
+      });
+    }
+  } catch (error) {
+    console.error(`Failed to submit transaction: ${error.message}`);
+    return res.status(500).json({
+      status: false,
+      error: `Failed to retrieve organizations: ${error.message}`
+    });
+  } finally {
+    if (gateway) {
+      await gateway.disconnect();
+    }
+  }
+};
+exports.updateOrganizationStatus  =async (req,res) =>{
+  let gateway;
+  try {
+
+    const {tokeorg,status}  = req.body;
+    console.log(req.body)
+    const datatime = new Date();
+    const value="org1" 
+    // Kết nối tới network
+    const { contract, gateway :gw} = await connectToNetworkorgvalue(value);
+    gateway = gw;
+
+    // Gửi transaction để lấy tất cả tổ chức
+    const result = await contract.submitTransaction("updateOrganizationStatus",tokeorg,status,datatime);
+
+    // Kiểm tra nếu có kết quả trả về
+    if (result) {
+      // console.log("Transaction result:", result.toString());
+
+      // Chuyển đổi chuỗi JSON thành object và trả về kết quả dưới dạng JSON
+      const organizations = JSON.parse(result.toString());
+      return res.status(200).json(organizations);
+    } else {
+      return res.status(404).json({ message: "No organizations found" });
+    }
+  } catch (error) {
+    console.error(`Failed to submit transaction: ${error.message}`);
+    return res.status(500).json({ error: `Failed to retrieve organizations: ${error.message}` });
+  } finally {
+    if (gateway) {
+      await gateway.disconnect();
+    }
+  }
+}
+exports.updateOrganizationSyncstatus  =async (req,res) =>{
+  let gateway;
+  try {
+
+    const {tokeorg,status}  = req.body;
+    console.log(req.body)
+    const datatime = new Date();
+    const value="org1" 
+    // Kết nối tới network
+    const { contract, gateway :gw} = await connectToNetworkorgvalue(value);
+    gateway = gw;
+
+    // Gửi transaction để lấy tất cả tổ chức
+    const result = await contract.submitTransaction("updateSyncOrganizationStatus",tokeorg,status,datatime);
+
+    // Kiểm tra nếu có kết quả trả về
+    if (result) {
+      // console.log("Transaction result:", result.toString());
+
+      // Chuyển đổi chuỗi JSON thành object và trả về kết quả dưới dạng JSON
+      const organizations = JSON.parse(result.toString());
+      return res.status(200).json(organizations);
+    } else {
+      return res.status(404).json({ message: "No organizations found" });
+    }
+  } catch (error) {
+    console.error(`Failed to submit transaction: ${error.message}`);
+    return res.status(500).json({ error: `Failed to retrieve organizations: ${error.message}` });
+  } finally {
+    if (gateway) {
+      await gateway.disconnect();
+    }
+  }
+}
 exports.getAllOrganizations = async (req, res) => {
   let gateway;
   try {
@@ -38,6 +148,98 @@ exports.getAllOrganizations = async (req, res) => {
   }
 };
 
+exports.getSuperadminOrg = async (req, res) => {
+  let gateway;
+  try {
+    const value="org1" 
+    // Kết nối tới network
+    const { tokenorg } = req.body;
+
+    const { contract, gateway :gw} = await connectToNetworkorgvalue(value);
+    gateway = gw;
+
+    // Gửi transaction để lấy tất cả tổ chức
+    const result = await contract.submitTransaction("getSuperAdmin",tokenorg);
+
+    // Kiểm tra nếu có kết quả trả về
+    if (result) {
+      // console.log("Transaction result:", result.toString());
+
+      // Chuyển đổi chuỗi JSON thành object và trả về kết quả dưới dạng JSON
+      const organizations = JSON.parse(result.toString());
+      return res.status(200).json(organizations);
+    } else {
+      return res.status(404).json({ message: "No organizations found" });
+    }
+  } catch (error) {
+    console.error(`Failed to submit transaction: ${error.message}`);
+    return res.status(500).json({ error: `Failed to retrieve organizations: ${error.message}` });
+  } finally {
+    if (gateway) {
+      await gateway.disconnect();
+    }
+  }
+};
+exports.getAllOrganizationsTokenFalse = async (req, res) => {
+  let gateway;
+  try {
+    const value="org1" 
+    // Kết nối tới network
+    const { contract, gateway :gw} = await connectToNetworkorgvalue(value);
+    gateway = gw;
+
+    // Gửi transaction để lấy tất cả tổ chức
+    const result = await contract.submitTransaction("getOrganizationsWithStatusFalse");
+
+    // Kiểm tra nếu có kết quả trả về
+    if (result) {
+      // console.log("Transaction result:", result.toString());
+
+      // Chuyển đổi chuỗi JSON thành object và trả về kết quả dưới dạng JSON
+      const organizations = JSON.parse(result.toString());
+      return res.status(200).json(organizations);
+    } else {
+      return res.status(404).json({ message: "No organizations found" });
+    }
+  } catch (error) {
+    console.error(`Failed to submit transaction: ${error.message}`);
+    return res.status(500).json({ error: `Failed to retrieve organizations: ${error.message}` });
+  } finally {
+    if (gateway) {
+      await gateway.disconnect();
+    }
+  }
+};
+exports.getAllOrganizationsTokenTrue = async (req, res) => {
+  let gateway;
+  try {
+    const value="org1" 
+    // Kết nối tới network
+    const { contract, gateway :gw} = await connectToNetworkorgvalue(value);
+    gateway = gw;
+
+    // Gửi transaction để lấy tất cả tổ chức
+    const result = await contract.submitTransaction("getOrganizationsWithStatusTrue");
+
+    // Kiểm tra nếu có kết quả trả về
+    if (result) {
+      // console.log("Transaction result:", result.toString());
+
+      // Chuyển đổi chuỗi JSON thành object và trả về kết quả dưới dạng JSON
+      const organizations = JSON.parse(result.toString());
+      return res.status(200).json(organizations);
+    } else {
+      return res.status(404).json({ message: "No organizations found" });
+    }
+  } catch (error) {
+    console.error(`Failed to submit transaction: ${error.message}`);
+    return res.status(500).json({ error: `Failed to retrieve organizations: ${error.message}` });
+  } finally {
+    if (gateway) {
+      await gateway.disconnect();
+    }
+  }
+};
 exports.getAllOrganizationsToken = async (req, res) => {
   let gateway;
   try {
@@ -227,7 +429,7 @@ exports.getActiveOrganizations = async (req, res) => {
 exports.createOrg = async (req, res) => {
   const {
     nameorg, nameadmin, emailadmin, addressadmin, cccdadmin,
-    phoneadmin, passwordadmin, businessBase64
+    phoneadmin, passwordadmin, businesslicense,avatar,imgidentification,License,cccdImage,
   } = req.body;
 
   console.log(req.body);
@@ -241,7 +443,7 @@ exports.createOrg = async (req, res) => {
     !emailadmin ||
     !addressadmin ||
     !phoneadmin ||
-    !businessBase64
+    !businesslicense
   ) {
     return res.status(400).json({ success: false, message: "Invalid input" });
   }
@@ -264,14 +466,14 @@ exports.createOrg = async (req, res) => {
       emailadmin,
       addressadmin,
       phoneadmin,
-      businessBase64
+      businesslicense
     );
 
     if (result) {
       const tokenorg = result.toString();
       await contract.submitTransaction(
         "createAdmin",
-        tokenorg, nameadmin, addressadmin, phoneadmin, cccdadmin, hashedPassword, nameorg
+        tokenorg, nameadmin, addressadmin, phoneadmin, cccdadmin, hashedPassword, nameorg,License,imgidentification,avatar
       );
 
       console.log("Transaction result:", result.toString());
@@ -323,12 +525,14 @@ exports.loginorganization = async (req, res) => {
       if (!oldPasswordMatch) {
         throw new Error('Mật khẩu không chính xác.'+oldPasswordMatch+org.passwordvalue);
     }
-    console.log(org);
+    console.log('gias tri'+org.specialized);
     const payload = {
       tokenuser: org.tokenuser,
-      typeusers: org.typeusers,
+      tokenuser: org.tokenuser,
       nameorg: org.nameorg,
       branch: org.branch,
+      specialized:org.specialized,
+      typeusers:org.typeusers,
       tokeorg: org.tokeorg,
   
   };
@@ -430,7 +634,7 @@ exports.loginUser = async (req, res) => {
 exports.Createuser = async (req, res) => {
   try {
     // Kết nối đến mạng và lấy contract
-    const {value, tokeorg, branch, imgidentification, fullname, address, phone, typeusers, cccd, password } = req.body;
+    const {value, tokeorg, branch, imgidentification, fullname, address, phone, typeusers, cccd, password ,License,avatar,specialized} = req.body;
     const { contract, gateway } = await connectToNetworkorgvalue(value);
 
     // Lấy dữ liệu từ request body
@@ -446,14 +650,30 @@ exports.Createuser = async (req, res) => {
       console.log(timecreats.toISOString());
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
-      const result = await contract.submitTransaction('createpersonnel', tokeorg, branch, fullname, address, phone, typeusers, cccd, hashedPassword, imgidentification, timecreats);
+      const result = await contract.submitTransaction('createpersonnel', tokeorg, branch, fullname, address, phone, typeusers, cccd, hashedPassword, imgidentification, timecreats,License,avatar,specialized);
 
       if (result) {
         console.log("Transaction result:", result.toString());
 
         // Đổi tên biến để không gây xung đột
         const transactionResult = result.toString();
-        return res.status(200).json({ success: true, message: 'User created successfully', result: transactionResult });
+        const _resData = {
+          tokeorg:tokeorg,
+          branch:branch,
+          fullname:fullname,
+          tokeorg:tokeorg,
+          address:address,
+          phone:phone,
+          typeusers:typeusers,
+          cccd:cccd,
+          hashedPassword:hashedPassword,
+          imgidentification:imgidentification,
+          tokenuser:transactionResult,
+          License:License,
+          specialized:specialized,
+          avatar:avatar,
+        }
+        return res.status(200).json({ success: true, message: 'User created successfully', result: _resData });
 
       } else {
         console.error("Result is undefined");

@@ -191,10 +191,10 @@ peer lifecycle chaincode queryinstalled
 # Approve chaincode for my org
 # CC_PACKAGE_ID_MEDICAL=$(peer lifecycle chaincode queryinstalled | grep -oP '(?<=Package ID: ).*' | head -n 1 | cut -d ',' -f 1)
 # echo "Package ID: $CC_PACKAGE_ID_MEDICAL"
-export CC_PACKAGE_ID_MEDICAL=medical_1.0:c16222f37afc3320ce163e5a93c63ee396b80dbb07b7447b77f2fb890e798146
+export CC_PACKAGE_ID_MEDICAL=medical_1.0:f360856ddacee6df25bfb934ae9ac7755dfe3de1605ebcd3120ec59ad4c42aba
 peer lifecycle chaincode approveformyorg -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls --cafile "${PWD}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem" --channelID "$NAMENETWORK" --name medical --version 1.0 --package-id $CC_PACKAGE_ID_MEDICAL --sequence 1
 
-export CC_PACKAGE_ID_ORG=organization_1.0:f1c6f538e9a76b883cda00c8ae6692190bdc1e47bcf7285cb78f76a85e47ae8f
+export CC_PACKAGE_ID_ORG=organization_1.0:5d6ec3d4e8850cc7069621cbb58fa7e7ca68492a3da978d2c08adc36ecb6bb81
 peer lifecycle chaincode approveformyorg -o localhost:7050 --ordererTLSHostnameOverride orderer.example.com --tls --cafile "${PWD}/organizations/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem" --channelID "$NAMENETWORK" --name organization --version 1.0 --package-id $CC_PACKAGE_ID_ORG --sequence 1
 
 # Query committed chaincode

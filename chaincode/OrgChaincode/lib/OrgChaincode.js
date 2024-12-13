@@ -14,6 +14,7 @@ class OrgChaincode extends Contract {
       businessBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAADTz',
       tokeorg: 'orgToken123',
       statusOrg: 'false',
+      Syncstatus:'false',
       hospitalbranch: [],
       users: [
         {
@@ -67,7 +68,82 @@ class OrgChaincode extends Contract {
     // Trả về danh sách bệnh viện
     return hospitalBranches;
 }
+async countStatus(ctx) {
+    const queryString = {
+        selector: {} // Lấy tất cả các bản ghi trong ledger
+    };
 
+    const iterator = await ctx.stub.getQueryResult(JSON.stringify(queryString));
+    let totalTrue = 0;
+    let totalFalse = 0;
+
+    while (true) {
+        const res = await iterator.next();
+
+        if (res.value && res.value.value.toString()) {
+            const record = JSON.parse(res.value.value.toString('utf8'));
+
+            // Kiểm tra trạng thái của tổ chức
+            if (record.statusOrg === "true") {
+                totalTrue++;
+            } else if (record.statusOrg === "false") {
+                totalFalse++;
+            }
+        }
+
+        if (res.done) {
+            await iterator.close();
+            break;
+        }
+    }
+
+    return { totalTrue, totalFalse };
+}
+
+async countOrganizations(ctx) {
+    const hospitalKey = 'datahospital'; // Key để lấy danh sách tổ chức
+    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
+
+    // Kiểm tra nếu danh sách tổ chức không tồn tại hoặc trống
+    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+        return 0; // Không có tổ chức nào
+    }
+
+    const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+    return hospitalTokens.length; // Trả về số lượng tổ chức
+}
+
+// async updateOrganizationStatus(ctx, tokeorg, newStatus,datatime) {
+//     // Kiểm tra nếu token tổ chức không tồn tại
+//     const orgBytes = await ctx.stub.getState(tokeorg);
+//     if (!orgBytes || orgBytes.length === 0) {
+//         throw new Error(`Organization with token ${tokeorg} does not exist`);
+//     }
+
+//     // Lấy dữ liệu tổ chức từ blockchain
+//     const organization = JSON.parse(orgBytes.toString());
+
+//     // Cập nhật trạng thái tổ chức
+//     const oldStatus = organization.statusOrg; // Trạng thái cũ
+//     organization.statusOrg = newStatus;
+
+//     // Thêm lịch sử thay đổi trạng thái vào historyOrg
+//     organization.historyOrg.push({
+//         action: 'UPDATE_STATUS',
+//         timestamp: datatime,
+//         oldStatus,
+//         newStatus,
+//     });
+
+//     // Lưu lại dữ liệu tổ chức sau khi cập nhật
+//     await ctx.stub.putState(tokeorg, Buffer.from(JSON.stringify(organization)));
+
+//     console.log(`Updated organization status for ${tokeorg} from ${oldStatus} to ${newStatus}`);
+//     return {
+//         success: true,
+//         message: `Organization status updated from ${oldStatus} to ${newStatus}`,
+//     };
+// }
 
 async getBranchDetails(ctx, tokeorg, tokenbranch) {
   // Lấy danh sách tất cả các tổ chức từ 'datahospital'
@@ -104,7 +180,7 @@ async getBranchDetails(ctx, tokeorg, tokenbranch) {
 
 
  
-  async createOrganization(ctx, currentTime, nameorg, nameadmin, emailadmin, addressadmin, cccdadmin, phoneadmin, passwordadmin, businessBase64) {
+  async createOrganization(ctx, currentTime, nameorg, nameadmin, emailadmin, addressadmin, cccdadmin, phoneadmin, passwordadmin, businesslicense) {
     const txId = ctx.stub.getTxID();
     const tokeorg = this.hasDataToken(nameorg, txId); // Tạo token tổ chức
 
@@ -142,11 +218,12 @@ async getBranchDetails(ctx, tokeorg, tokenbranch) {
         emailadmin,
         addressadmin,
         phoneadmin,
-        businessBase64,
+        businesslicense,
         timestamp: currentTime,
         hospitalbranch: [],
         tokeorg: tokeorg,
         statusOrg: 'false',
+        Syncstatus: 'false',
         users: [],
         historyOrg: [], // Lịch sử khởi tạo tổ chức
         passiente:[]
@@ -156,7 +233,7 @@ async getBranchDetails(ctx, tokeorg, tokenbranch) {
     organization.historyOrg.push({
         action: 'CREATE_ORG',
         timestamporg: currentTime,
-        data: { nameorg, nameadmin, emailadmin, addressadmin, phoneadmin, businessBase64 }
+        data: { nameorg, nameadmin, emailadmin, addressadmin, phoneadmin, businesslicense }
     });
 
     // Lưu dữ liệu tổ chức vào public state
@@ -170,14 +247,163 @@ async getBranchDetails(ctx, tokeorg, tokenbranch) {
     console.log(`Organization ${nameorg} created with admin ${nameadmin}`);
     return tokeorg; // Trả về token tổ chức
 }
+async countTotalUsers(ctx) {
+    const hospitalKey = 'datahospital'; // Key để lấy danh sách tổ chức
+    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
 
+    // Kiểm tra nếu danh sách tổ chức không tồn tại hoặc trống
+    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+        return 0; // Không có tổ chức nào, do đó không có user nào
+    }
 
+    const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+    let totalUsers = 0;
 
-async createAdmin(ctx, tokeorg, fullname, address, phone, cccd, password, organizationalvalue) {
-  const txId = ctx.stub.getTxID();
-  const tokenuser = this.hasDataToken(fullname, txId);
+    for (const token of hospitalTokens) {
+        // Lấy thông tin tổ chức từ token
+        const orgDataBuffer = await ctx.stub.getState(token);
+        if (orgDataBuffer && orgDataBuffer.length > 0) {
+            const orgData = JSON.parse(orgDataBuffer.toString());
+            // Lấy danh sách users và tính tổng
+            if (orgData.users && Array.isArray(orgData.users)) {
+                totalUsers += orgData.users.length;
+            }
+        }
+    }
 
-  // Sử dụng getState để lấy dữ liệu của tổ chức từ public ledger
+    return totalUsers; // Trả về tổng số user
+}
+
+async changeAdminToDoctor(ctx, tokeorg, oldTokenUser, newTokenUser) {
+    const txId = ctx.stub.getTxID();
+
+    // Lấy dữ liệu bệnh viện từ public ledger (hospital tokens)
+    const hospitalKey = 'datahospital';
+    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
+    
+    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+        throw new Error(`Hospital data with key ${hospitalKey} does not exist`);
+    }
+
+    let hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+    
+    // Kiểm tra xem tổ chức (hospital) có tồn tại trong dữ liệu bệnh viện hay không
+    const hospitalExists = hospitalTokens.includes(tokeorg);
+    if (!hospitalExists) {
+        throw new Error(`Hospital with token ${tokeorg} does not exist in hospital data`);
+    }
+
+    // Lấy dữ liệu tổ chức từ public ledger
+    const orgAsBytes = await ctx.stub.getState(tokeorg);
+    if (!orgAsBytes || orgAsBytes.length === 0) {
+        throw new Error(`Organization with token ${tokeorg} does not exist`);
+    }
+
+    const org = JSON.parse(orgAsBytes.toString());
+
+    // Tìm và thay đổi quyền admin cũ thành doctor
+    let oldUserIndex = -1;
+    for (let i = 0; i < org.users.length; i++) {
+        if (org.users[i].tokenuser === oldTokenUser) {
+            oldUserIndex = i;
+            break;
+        }
+    }
+
+    if (oldUserIndex === -1) {
+        throw new Error(`User with token ${oldTokenUser} does not exist in the organization`);
+    }
+
+    // Cập nhật quyền cho user cũ
+    org.users[oldUserIndex].typeusers = 'doctor';  // Chuyển quyền admin thành doctor
+
+    // Tìm và cập nhật quyền admin mới thành superadmin
+    let newUserIndex = -1;
+    for (let i = 0; i < org.users.length; i++) {
+        if (org.users[i].tokenuser === newTokenUser) {
+            newUserIndex = i;
+            break;
+        }
+    }
+
+    if (newUserIndex === -1) {
+        throw new Error(`User with token ${newTokenUser} does not exist in the organization`);
+    }
+
+    // Cập nhật quyền cho user mới
+    org.users[newUserIndex].typeusers = 'superadmin';  // Chuyển quyền thành superadmin
+
+    // Thêm hành động vào lịch sử của tổ chức
+    const currentTime = new Date().toISOString();
+    org.historyOrg.push({
+        action: 'CHANGE_USER_ROLE',
+        timestamporg: currentTime,
+        data: {
+            oldTokenUser,
+            newTokenUser,
+            oldRole: 'admin',
+            newRole: 'doctor', // Đổi quyền của admin cũ thành doctor
+            newRoleSuperAdmin: 'superadmin', // Đổi quyền của admin mới thành superadmin
+        }
+    });
+
+    // Lưu lại dữ liệu tổ chức vào public ledger
+    await ctx.stub.putState(tokeorg, Buffer.from(JSON.stringify(org)));
+
+    console.log(`Admin with token ${oldTokenUser} changed to doctor, and admin with token ${newTokenUser} changed to superadmin in organization ${tokeorg}`);
+    return `Admin with token ${oldTokenUser} changed to doctor, and admin with token ${newTokenUser} changed to superadmin`;
+}
+
+async createAdmin(ctx, tokeorg, fullname, address, phone, cccd, password, organizationalvalue,License,imgidentification,avatar) {
+    const txId = ctx.stub.getTxID();
+    const tokenuser = this.hasDataToken(fullname, txId);
+  
+    // Sử dụng getState để lấy dữ liệu của tổ chức từ public ledger
+    const orgAsBytes = await ctx.stub.getState(tokeorg);
+    if (!orgAsBytes || orgAsBytes.length === 0) {
+        throw new Error(`Organization with token ${tokeorg} does not exist`);
+    }
+  
+    const org = JSON.parse(orgAsBytes.toString());
+  
+    // Xử lý hash password nếu cần để bảo mật
+    const newUser = {
+        fullname,
+        address,
+        phone,
+        typeusers: 'superadmin',
+        cccd,
+        password, // Lưu password đã hash nếu cần
+        organizationalvalue,
+        tokenuser,
+        License,imgidentification,avatar,
+        historyUser: []
+    };
+  
+    // Lưu lại lịch sử tạo người dùng
+    newUser.historyUser.push({
+        action: 'CREATE_USER',
+        data: { fullname, address, phone, typeusers: 'superadmin', cccd ,License,imgidentification,avatar}
+    });
+  
+    // Thêm người dùng mới vào danh sách người dùng của tổ chức
+    org.users.push(newUser);
+  
+    // Thêm hành động thêm người dùng vào lịch sử của tổ chức
+    org.historyOrg.push({
+        action: 'ADD_USER',
+        data: { fullname, tokenuser }
+    });
+  
+    // Lưu lại dữ liệu tổ chức vào public ledger
+    await ctx.stub.putState(tokeorg, Buffer.from(JSON.stringify(org)));
+  
+    console.log(`Admin ${fullname} created in organization ${tokeorg}`);
+    return tokenuser; // Trả về token người dùng mới
+  }
+// {value, tokeorg, branch, imgidentification, fullname, address, phone, typeusers, cccd, password ,License,avatar,specialized}
+async getSuperAdmin(ctx, tokeorg) {
+  // Kiểm tra tổ chức tồn tại
   const orgAsBytes = await ctx.stub.getState(tokeorg);
   if (!orgAsBytes || orgAsBytes.length === 0) {
       throw new Error(`Organization with token ${tokeorg} does not exist`);
@@ -185,40 +411,17 @@ async createAdmin(ctx, tokeorg, fullname, address, phone, cccd, password, organi
 
   const org = JSON.parse(orgAsBytes.toString());
 
-  // Xử lý hash password nếu cần để bảo mật
-  const newUser = {
-      fullname,
-      address,
-      phone,
-      typeusers: 'superadmin',
-      cccd,
-      password, // Lưu password đã hash nếu cần
-      organizationalvalue,
-      tokenuser,
-      historyUser: []
-  };
+  // Duyệt qua danh sách người dùng của tổ chức để tìm superadmin
+  const superAdmin = org.users.find(user => user.typeusers === 'superadmin');
+  if (!superAdmin) {
+      throw new Error(`No superadmin found in organization with token ${tokeorg}`);
+  }
 
-  // Lưu lại lịch sử tạo người dùng
-  newUser.historyUser.push({
-      action: 'CREATE_USER',
-      data: { fullname, address, phone, typeusers: 'admin', cccd }
-  });
-
-  // Thêm người dùng mới vào danh sách người dùng của tổ chức
-  org.users.push(newUser);
-
-  // Thêm hành động thêm người dùng vào lịch sử của tổ chức
-  org.historyOrg.push({
-      action: 'ADD_USER',
-      data: { fullname, tokenuser }
-  });
-
-  // Lưu lại dữ liệu tổ chức vào public ledger
-  await ctx.stub.putState(tokeorg, Buffer.from(JSON.stringify(org)));
-
-  console.log(`Admin ${fullname} created in organization ${tokeorg}`);
-  return tokenuser; // Trả về token người dùng mới
+  // Trả về thông tin của superadmin
+  return superAdmin;
 }
+
+
 
 //   async getfunOrganizations(ctx) {
 //     const collectionName = `myPrivateCollection_Org1`; // Tên của collection riêng tư
@@ -246,6 +449,56 @@ async createAdmin(ctx, tokeorg, fullname, address, phone, cccd, password, organi
 
 //     return activeOrgs; // Trả về toàn bộ dữ liệu tổ chức
 // }
+async changeSuperAdmin(ctx, tokeorg, currentSuperAdminToken, newSuperAdminToken,data) {
+  try {
+      // Kiểm tra tổ chức tồn tại
+      const orgAsBytes = await ctx.stub.getState(tokeorg);
+      if (!orgAsBytes || orgAsBytes.length === 0) {
+          console.error(`Organization with token ${tokeorg} does not exist`);
+          return false;
+      }
+
+      const org = JSON.parse(orgAsBytes.toString());
+
+    //   // Kiểm tra tài khoản hiện tại là superadmin
+      const currentSuperAdmin = org.users.find(user => user.tokenuser === currentSuperAdminToken );
+      if (!currentSuperAdmin) {
+          console.error(`The token ${currentSuperAdminToken} is not associated with a superadmin in organization ${tokeorg}`);
+          return false;
+      }
+
+    //   // Kiểm tra tài khoản mới tồn tại
+      const newAdmin = org.users.find(user => user.tokenuser === newSuperAdminToken);
+      if (!newAdmin) {
+          console.error(`The token ${newSuperAdminToken} does not match any user in organization ${tokeorg}`);
+          return false;
+      }
+
+    //   // Thay đổi vai trò
+      currentSuperAdmin.typeusers = 'admin';
+      newAdmin.typeusers = 'superadmin';
+
+    //   // Ghi lại lịch sử thay đổi trong tổ chức
+      org.historyOrg.push({
+          action: 'CHANGE_SUPERADMIN',
+          timestamporg: data,
+          data: {
+              oldSuperAdmin: currentSuperAdminToken,
+              newSuperAdmin: newSuperAdminToken
+          }
+      });
+
+      // Lưu lại thay đổi vào public ledger
+      await ctx.stub.putState(tokeorg, Buffer.from(JSON.stringify(org)));
+
+    //   console.log(`Superadmin changed from ${currentSuperAdminToken} to ${newSuperAdminToken} in organization ${tokeorg}`);
+      return true; // Thành công
+  } catch (error) {
+      console.error(`Failed to change superadmin: ${error.message}`);
+      return false; // Thất bại
+  }
+}
+
 
 async createrdetailbranch(ctx, tokeorg, branchname, branchaddress, branchphone, branchemail, branchbusinesslicense, timecreate) {
   // Lấy danh sách tất cả các tổ chức từ 'datahospital'
@@ -311,40 +564,61 @@ async createrdetailbranch(ctx, tokeorg, branchname, branchaddress, branchphone, 
 
   return tokenbranch;
 }
-  async getHospitalBranchById(ctx, tokeorg, tokenbranch) {
-    const hospitalKey = 'datahospital';
+async getHospitalBranchById(ctx, tokeorg, tokenbranch) {
+  const hospitalKey = 'datahospital';
 
-    // Lấy danh sách token của tổ chức từ state thông qua key 'datahospital'
-    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
-    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
-        throw new Error(`Không có tổ chức nào được đăng ký.`);
-    }
+  // Lấy danh sách token của tổ chức từ state thông qua key 'datahospital'
+  const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
+  if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+      throw new Error(`Không có tổ chức nào được đăng ký.`);
+  }
 
-    const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+  const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
 
-    // Kiểm tra xem tokeorg có nằm trong danh sách tổ chức không
-    if (!hospitalTokens.includes(tokeorg)) {
-        throw new Error(`Tổ chức với token ${tokeorg} không tồn tại trong danh sách tổ chức.`);
-    }
+  // Kiểm tra xem tokeorg có nằm trong danh sách tổ chức không
+  if (!hospitalTokens.includes(tokeorg)) {
+      throw new Error(`Tổ chức với token ${tokeorg} không tồn tại trong danh sách tổ chức.`);
+  }
 
-    // Lấy thông tin tổ chức (org) dựa trên token tổ chức (tokeorg)
-    const orgAsBytes = await ctx.stub.getState(tokeorg);
-    if (!orgAsBytes || orgAsBytes.length === 0) {
-        throw new Error(`Tổ chức với token ${tokeorg} không tồn tại.`);
-    }
+  // Lấy thông tin tổ chức (org) dựa trên token tổ chức (tokeorg)
+  const orgAsBytes = await ctx.stub.getState(tokeorg);
+  if (!orgAsBytes || orgAsBytes.length === 0) {
+      throw new Error(`Tổ chức với token ${tokeorg} không tồn tại.`);
+  }
 
-    // Chuyển đổi dữ liệu tổ chức từ bytes thành đối tượng JSON
-    const org = JSON.parse(orgAsBytes.toString());
+  // Chuyển đổi dữ liệu tổ chức từ bytes thành đối tượng JSON
+  const org = JSON.parse(orgAsBytes.toString());
 
-    // Lọc các bản ghi bệnh nhân theo chi nhánh
-    const recordsByBranch = org.passiente.filter(record => record.branch === tokenbranch);
+  // Lọc các bản ghi bệnh nhân theo chi nhánh
+  const recordsByBranch = org.passiente.filter(record => record.branch === tokenbranch);
 
-    if (recordsByBranch.length === 0) {
-        throw new Error(`Không có bản ghi nào trong chi nhánh ${brach} của tổ chức ${tokeorg}.`);
-    }
+  if (recordsByBranch.length === 0) {
+      throw new Error(`Không có bản ghi nào trong chi nhánh ${tokenbranch} của tổ chức ${tokeorg}.`);
+  }
 
-    return recordsByBranch; // Trả về danh sách các bản ghi
+  // Đếm tổng số `status` true và false
+  const statusCount = recordsByBranch.reduce(
+      (count, record) => {
+          if (record.status === 'true') {
+              count.true += 1;
+          } else if (record.status === 'false') {
+              count.false += 1;
+          }
+          return count;
+      },
+      { true: 0, false: 0 } // Khởi tạo giá trị ban đầu
+  );
+
+  // Thêm tổng số lượng `true` và `false`
+  const total = statusCount.true + statusCount.false;
+
+  return {
+      records: recordsByBranch, // Trả về danh sách các bản ghi
+      statusCount, // Trả về đếm tổng số `status` true và false
+      total // Tổng số lượng `true` và `false`
+  };
 }
+
 
 async addRecordStatusBranch(ctx, tokeorg, brach, cccd, content, timerequest) {
   const hospitalKey = 'datahospital';
@@ -467,12 +741,14 @@ async updateRecordStatusBranch(ctx, tokeorg, brach, cccd, newstatus, newTimerequ
       typeusers: user.typeusers,
       branch: user.branch,
       nameorg: org.nameorg,
+      specialized: user.specialized,
       tokeorg: org.tokeorg,
       passwordvalue: user.password,
+      user: user,
     };
   }
 
-  async createpersonnel(ctx, tokeorg, branch, fullname, address, phone, typeusers, cccd, password, imgidentification, timecreats) {
+  async createpersonnel(ctx, tokeorg, branch, fullname, address, phone, typeusers, cccd, password, imgidentification, timecreats,License,avatar,specialized) {
     try {
         const txId = ctx.stub.getTxID();
         const tokenuser = this.hasDataToken(fullname, txId); // Tạo token cho người dùng
@@ -528,6 +804,9 @@ async updateRecordStatusBranch(ctx, tokeorg, brach, cccd, newstatus, newTimerequ
             branch,  // Sử dụng tên chi nhánh từ thông tin chi nhánh tìm thấy
             timecreats,
             tokenuser,
+            License,
+            avatar,
+            specialized,
             historyUser: []  // Khởi tạo lịch sử người dùng mới
         };
 
@@ -655,7 +934,63 @@ async updateOrganizationStatus(ctx, tokeorg, newStatus, currentTime) {
   };
 }
 
-
+async updateSyncOrganizationStatus(ctx, tokeorg, newStatus, currentTime) {
+    // Lấy danh sách tổ chức
+    const hospitalKey = 'datahospital';
+    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
+  
+    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+        throw new Error('No organizations found in the system');
+    }
+  
+    const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+  
+    // Kiểm tra tổ chức tồn tại
+    if (!hospitalTokens.includes(tokeorg)) {
+        throw new Error(`Organization with token ${tokeorg} does not exist`);
+    }
+  
+    const orgAsBytes = await ctx.stub.getState(tokeorg);
+    if (!orgAsBytes || orgAsBytes.length === 0) {
+        throw new Error(`Organization with token ${tokeorg} does not exist`);
+    }
+  
+    let org;
+    try {
+        org = JSON.parse(orgAsBytes.toString());
+    } catch (error) {
+        throw new Error(`Failed to parse organization data for token ${tokeorg}: ${error}`);
+    }
+  
+    const currentStatus = org.statusOrg || "false";
+    console.log(`Updating status of organization ${tokeorg} from ${currentStatus} to ${newStatus}`);
+  
+    org.Syncstatus = newStatus;
+  
+    // Kiểm tra nếu `historyOrg` tồn tại, nếu không thì khởi tạo
+    if (!org.historyOrg) {
+        org.historyOrg = [];
+    }
+  
+    org.historyOrg.push({
+        action: 'UPDATE_STATUS',
+        timestamp: currentTime,
+        data: { previousStatus: currentStatus, newStatus }
+    });
+  
+    try {
+        await ctx.stub.putState(tokeorg, Buffer.from(JSON.stringify(org)));
+    } catch (error) {
+        throw new Error(`Failed to update organization status for token ${tokeorg}: ${error}`);
+    }
+  
+    return {
+        orgToken: tokeorg,
+        org: org,
+        status: newStatus,
+        message: `Organization status updated successfully`
+    };
+  }
   // Cập nhật thông tin người dùng
   async updateUser(ctx, tokeorg, cccd, fullname, address, phone, typeusers, password) {
     // Lấy danh sách tổ chức
@@ -891,6 +1226,56 @@ async getFullDataHospital(ctx) {
   }
 
   return organizations; // Trả về danh sách tổ chức
+}
+async getOrganizationsWithStatusTrue(ctx) {
+    const hospitalKey = 'datahospital';
+
+    // Lấy danh sách token từ state thông qua key 'datahospital'
+    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
+    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+        return []; // Không có tổ chức nào
+    }
+
+    const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+    const organizationsWithTrue = [];
+
+    // Lặp qua từng token và lấy dữ liệu tổ chức tương ứng từ state
+    for (const token of hospitalTokens) {
+        const orgDataBuffer = await ctx.stub.getState(token);
+        if (orgDataBuffer && orgDataBuffer.length > 0) {
+            const orgData = JSON.parse(orgDataBuffer.toString());
+            if (orgData.statusOrg === "true") {
+                organizationsWithTrue.push(orgData);
+            }
+        }
+    }
+
+    return organizationsWithTrue; // Trả về danh sách tổ chức có statusOrg là "true"
+}
+async getOrganizationsWithStatusFalse(ctx) {
+    const hospitalKey = 'datahospital';
+
+    // Lấy danh sách token từ state thông qua key 'datahospital'
+    const hospitalTokensBuffer = await ctx.stub.getState(hospitalKey);
+    if (!hospitalTokensBuffer || hospitalTokensBuffer.length === 0) {
+        return []; // Không có tổ chức nào
+    }
+
+    const hospitalTokens = JSON.parse(hospitalTokensBuffer.toString());
+    const organizationsWithFalse = [];
+
+    // Lặp qua từng token và lấy dữ liệu tổ chức tương ứng từ state
+    for (const token of hospitalTokens) {
+        const orgDataBuffer = await ctx.stub.getState(token);
+        if (orgDataBuffer && orgDataBuffer.length > 0) {
+            const orgData = JSON.parse(orgDataBuffer.toString());
+            if (orgData.statusOrg === "false") {
+                organizationsWithFalse.push(orgData);
+            }
+        }
+    }
+
+    return organizationsWithFalse; // Trả về danh sách tổ chức có statusOrg là "false"
 }
 
 

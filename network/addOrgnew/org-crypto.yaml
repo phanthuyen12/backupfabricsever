@@ -8,10 +8,10 @@
 # ---------------------------------------------------------------------------
 PeerOrgs:
   # ---------------------------------------------------------------------------
-  # phangiathuyendevfs3dsdfe
+  # benhvienthanhthuyendxquang
   # ---------------------------------------------------------------------------
-  - Name: phangiathuyendevfs3dsdfe
-    Domain: phangiathuyendevfs3dsdfe.example.com
+  - Name: benhvienthanhthuyendxquang
+    Domain: benhvienthanhthuyendxquang.example.com
     EnableNodeOUs: true
     Template:
       Count: 1
